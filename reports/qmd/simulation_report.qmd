@@ -250,13 +250,13 @@ A Linear Mixed Effects Model (LMER) of the pilot data reveals a clear interactio
 #| label: baseline-model
 #| cache: true
 
-# Try to load pilot data (private); fall back to cached results (public repo)
+# Try to load pilot data (private); fall back to cached model (public repo)
 rds_path <- if (file.exists("logs/data_edse_duration_estimates.rds")) {
   "logs/data_edse_duration_estimates.rds"
 } else if (file.exists("../../logs/data_edse_duration_estimates.rds")) {
   "../../logs/data_edse_duration_estimates.rds"
 } else {
-  NULL  # Use cached results
+  NULL  # Use cached model
 }
 
 if (!is.null(rds_path)) {
@@ -271,10 +271,8 @@ if (!is.null(rds_path)) {
                data = data.edse)
   use_cache <- FALSE
 } else {
-  # Load pre-computed results (public repo / GH Actions)
-  cache_path <- "../../materials/pilot_model_cache.rds"
-  pilot_cache <- readRDS(cache_path)
-  mdl2 <- NULL  # No model object
+  # Load pre-fitted model (public repo / GH Actions)
+  mdl2 <- readRDS("../../materials/pilot_lmer_model.rds")
   use_cache <- TRUE
 }
 ```
@@ -287,11 +285,7 @@ if (!is.null(rds_path)) {
 #| label: baseline-lmer-table
 
 # Extract fixed effects table
-if (use_cache) {
-  fe <- pilot_cache$fixed_effects
-} else {
-  fe <- as.data.frame(coef(summary(mdl2)))
-}
+fe <- as.data.frame(coef(summary(mdl2)))
 fe <- fe %>%
   tibble::rownames_to_column("Term") %>%
   mutate(
@@ -319,14 +313,10 @@ kable(fe, digits = 3,
 ```{r}
 #| label: baseline-emmeans-table
 
-if (use_cache) {
-  emm_df <- pilot_cache$emmeans
-} else {
-  emms <- emmeans(mdl2, pairwise ~ sentence_length | event_duration)
-  emm_df <- as.data.frame(summary(emms)$emmeans)
-}
+emms <- emmeans(mdl2, pairwise ~ sentence_length | event_duration)
 
-emm_df <- emm_df %>%
+# Estimated marginal means
+emm_df <- as.data.frame(summary(emms)$emmeans) %>%
   mutate(across(where(is.numeric), \(x) round(x, 3)))
 
 kable(emm_df, digits = 3,
@@ -338,13 +328,7 @@ kable(emm_df, digits = 3,
 #| label: baseline-contrasts-table
 
 # Pairwise contrasts: short - long within each event_duration
-if (use_cache) {
-  con_df <- pilot_cache$contrasts
-} else {
-  con_df <- as.data.frame(summary(emms)$contrasts)
-}
-
-con_df <- con_df %>%
+con_df <- as.data.frame(summary(emms)$contrasts) %>%
   mutate(
     Interpretation = case_when(
       p.value < 0.05 ~ "Strong Effect",
