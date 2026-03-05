@@ -1,0 +1,4 @@
+scenario,effect_0_10s,effect_10_20s,effect_20_60s,expected_n,pct_never_decided,h2_support_rate
+optimistic,0.5,0.25,0,64.2,0,100
+realistic,0.35,0.15,0,62.4,0,100
+conservative,0.25,0.12,0,60.6,0,100

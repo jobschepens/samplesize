@@ -1,0 +1,759 @@
+---
+title: "Simulation Analysis Report"
+subtitle: "Bayesian Sequential Design using ROPE"
+author: "Job Schepens"
+date: "today"
+format:
+  html:
+    theme: cosmo
+    toc: true
+    toc-depth: 3
+    code-fold: true
+    code-summary: "View Code"
+    fig-width: 10
+    fig-height: 7
+    embed-resources: true
+    number-sections: true
+execute:
+  echo: true
+  warning: false
+  message: false
+---
+
+```{r}
+#| label: setup
+#| include: false
+
+library(tidyverse)
+library(knitr)
+library(kableExtra)
+library(lme4)
+library(lmerTest)
+library(emmeans)
+library(patchwork)
+library(scales)
+
+# Source the centralized data loader
+# Adjust path allows rendering from project root or reports/qmd/
+if (file.exists("scripts/utils/load_results.R")) {
+  source("scripts/utils/load_results.R")
+  data_path <- "data/csv"
+} else {
+  source("../../scripts/utils/load_results.R")
+  data_path <- "../../data/csv"
+}
+
+# Load simulation results
+all_data <- load_simulation_results(data_dir = data_path)
+
+# Calculate summary stats for inline text
+n_total <- nrow(all_data)
+sims_per_scenario <- table(all_data$scenario)
+```
+
+# Introduction: Sample Size, Power, and Error Rates
+
+## What Are We Measuring?
+
+When we run an experiment, we are trying to decide between two states of the world:
+
+-   **H₀ (null hypothesis):** There is no effect — any observed difference is just noise.
+-   **H₁ (alternative hypothesis):** There is a real effect in the direction we expect.
+
+Every decision rule we use (a p-value threshold, a Bayes Factor criterion) will sometimes be wrong. Two types of mistakes are possible:
+
+| Decision → | Declare effect present | Declare no effect |
+|:-----------------------|:-----------------------|:-----------------------|
+| **H₀ is true** | **Type I Error (false positive)** α | Correct rejection |
+| **H₁ is true** | Correct detection (**Power** = 1 − β) | **Type II Error (miss)** β |
+
+-   **Type I error rate (α):** How often the test fires when there is nothing there. Conventionally capped at 5%.
+-   **Power (1 − β):** How often the test correctly detects a real effect. Researchers typically aim for ≥ 80%.
+-   **Sample size** is the main lever: more data → narrower uncertainty → higher power and (usually) well-controlled Type I error.
+
+## Simulation: Sequential Detection in a Mixed-Model Experiment
+
+How does type I error depend on sample size and decision rule? The plot below comes from a simulation that closely mirrors the structure of a typical psycholinguistics experiment: multiple subjects respond to multiple items, with random intercepts for both. The condition effect is small ($d \approx 0.06$) and is tested sequentially — adding subjects in batches of 5 (from N = 15 to N = 60) and checking for a decision at each step.
+
+Two test statistics are compared:
+
+-   **P-value \< .05** (red): the classic Likelihood Ratio Test.
+-   **BF \> 10 via BIC approximation** (green): a Bayesian criterion requiring the data to be at least 10× more likely under H₁ than H₀.
+
+The simulation is run under two noise conditions (low SD = 0.2, high SD = 0.8) to show how noise amplifies both problems.
+
+```{r}
+#| label: intro-concepts-sim
+#| cache: false
+#| message: false
+#| warning: false
+
+# Load the pre-computed LMM simulation results from the sequential testing notebook.
+# Path is relative to this qmd file's location.
+lmm_cache_path <- "../../../../materials/scripts/cache/sim_lmm_results.rds"
+
+if (file.exists(lmm_cache_path)) {
+  lmm_summary_all <- readRDS(lmm_cache_path)
+} else {
+  stop(paste(
+    "Cached LMM simulation results not found at:", lmm_cache_path,
+    "\nRender materials/scripts/06_sequential_testing.qmd first to generate the cache."
+  ))
+}
+```
+
+```{r}
+#| label: fig-intro-power-type1
+#| fig-cap: |
+#|   **Sequential detection rates across sample sizes and noise levels.**
+#|   Left column: H₀ is true (no effect) — rates above the dashed 5 % line are Type I errors.
+#|   Right column: H₁ is true (small effect, d = 0.06) — rates show statistical *power*.
+#|   Top row: low noise (SD = 0.2); bottom row: high noise (SD = 0.8).
+#|   The dashed horizontal line marks the conventional 5 % threshold.
+#| fig-width: 10
+#| fig-height: 8
+
+n_sim <- 50  # simulations per condition — used for binomial CI width
+
+plot_sim_panel <- function(data, noise_filter, scenario_filter, title_text, y_max = 1) {
+  data %>%
+    filter(Noise == noise_filter, Scenario == scenario_filter) %>%
+    # Wilson binomial 95% CI: more reliable than Wald near 0 and 1
+    mutate(
+      ci_lo = pmax(0, (Rate + 1.96^2 / (2 * n_sim) -
+                         1.96 * sqrt(Rate * (1 - Rate) / n_sim + 1.96^2 / (4 * n_sim^2))) /
+                    (1 + 1.96^2 / n_sim)),
+      ci_hi = pmin(1, (Rate + 1.96^2 / (2 * n_sim) +
+                         1.96 * sqrt(Rate * (1 - Rate) / n_sim + 1.96^2 / (4 * n_sim^2))) /
+                    (1 + 1.96^2 / n_sim))
+    ) %>%
+    ggplot(aes(x = check_n, y = Rate, color = Method, fill = Method, group = Method)) +
+    geom_hline(yintercept = 0.05, linetype = "dashed", color = "gray50") +
+    geom_ribbon(aes(ymin = ci_lo, ymax = ci_hi), alpha = 0.15, color = NA,
+                position = position_dodge(width = 1)) +
+    geom_line(linewidth = 1.2, position = position_dodge(width = 1)) +
+    geom_point(size = 3, position = position_dodge(width = 1)) +
+    labs(
+      title = title_text,
+      subtitle = noise_filter,
+      x = "Sample Size (Subjects)",
+      y = "Cumulative Rate"
+    ) +
+    scale_color_manual(
+      values = c("prop_p" = "#E74C3C", "prop_bf10" = "#2ECC71", "prop_bf10_brms" = "#9B59B6"),
+      labels = c("BF > 10 (BIC)", "BF > 10 (brms)", "P-Value (< .05)")
+    ) +
+    scale_fill_manual(
+      values = c("prop_p" = "#E74C3C", "prop_bf10" = "#2ECC71", "prop_bf10_brms" = "#9B59B6"),
+      labels = c("BF > 10 (BIC)", "BF > 10 (brms)", "P-Value (< .05)")
+    ) +
+    scale_y_continuous(labels = percent_format(), limits = c(0, y_max)) +
+    theme(legend.position = "none")
+}
+
+p1 <- plot_sim_panel(lmm_summary_all, "Low Noise (SD=0.2)",  "H0 (No Effect)",      "Type I Error — Low Noise",  y_max = 0.25)
+p2 <- plot_sim_panel(lmm_summary_all, "Low Noise (SD=0.2)",  "H1 (Effect d=0.06)",  "Power — Low Noise")
+p3 <- plot_sim_panel(lmm_summary_all, "High Noise (SD=0.8)", "H0 (No Effect)",      "Type I Error — High Noise", y_max = 0.25)
+p4 <- plot_sim_panel(lmm_summary_all, "High Noise (SD=0.8)", "H1 (Effect d=0.06)",  "Power — High Noise")
+
+(p1 + p2) / (p3 + p4) +
+  plot_layout(guides = "collect") &
+  theme(legend.position = "bottom")
+```
+
+## How to Read This Plot
+
+**Left column (Type I error — H₀ is true).** Ideal behaviour is a flat line at or below 5% (dashed). The y-axis is zoomed to 25% so that inflation above the nominal level is visible. Any curve that climbs above the dashed line is producing too many false alarms. The p-value (red) drifts upward with successive looks — reflecting optional-stopping inflation — while the BF criterion (green) stays more conservative. The shaded ribbons are 95% Wilson binomial confidence intervals around each estimated rate; because only 50 simulations were run, those ribbons are wide and should be read as indicating the direction of the effect rather than its precise magnitude.
+
+**Why do red and green look almost the same in both left panels?** The p-value and the BIC-based BF both work by comparing how much better the model fits *relative to its own noise estimate* — they are based on a **likelihood ratio**, which is self-calibrating.
+
+The LRT statistic is:
+
+$$\Lambda = -2(\ell_0 - \ell_1) \xrightarrow{\;H_0\;} \chi^2(1)$$
+
+In a normal-errors model, the log-likelihood difference simplifies to:
+
+$$\ell_1 - \ell_0 = \frac{N}{2}\log\!\frac{\hat\sigma_0^2}{\hat\sigma_1^2}$$
+
+Under H₀ the condition adds nothing, so $\hat\sigma_1^2 \approx \hat\sigma_0^2$ and the ratio $\approx 1$ regardless of the *absolute* size of $\sigma$. Doubling the noise doubles both variance estimates, and they cancel. This is why the $\chi^2(1)$ null distribution — and hence the nominal 5 % Type I rate — holds for any $\sigma$.
+
+The BIC-based BF inherits the same property. With one extra fixed-effect parameter in M₁ ($k_1 = k_0 + 1$):
+
+$$\text{BF}_{10}^{\text{BIC}} = \exp\!\left(\frac{\text{BIC}_0 - \text{BIC}_1}{2}\right) = \exp\!\left(\ell_1 - \ell_0 - \tfrac{1}{2}\log n\right)$$
+
+The only new term is the fixed penalty $-\tfrac{1}{2}\log n$, which shifts the distribution of $\log\text{BF}_{10}$ by a constant — it does not reintroduce any dependence on $\sigma$.
+
+So Type I error rates for red and green are approximately noise-independent by construction.
+
+**Why does the red line climb with N but green and purple stay flat (optional-stopping robustness)?** This is the central practical difference between the three methods.
+
+*Red (p-value)* has no memory and no brake. Each new checkpoint is another independent opportunity to cross $p < .05$. Using the Bonferroni bound as an upper limit, the probability of *ever* rejecting across $K$ looks is at most:
+
+$$\Pr(\text{ever } p < \alpha \mid H_0) \leq K\alpha$$
+
+With $K = 10$ looks at $\alpha = .05$ that is already 50 % — in practice somewhat lower because the looks use cumulative data and are correlated, but the direction is clear. There is nothing in the p-value that pushes back against repeated testing.
+
+*Green (BIC-based BF)* has a built-in growing penalty. Recall:
+
+$$\text{BF}_{10}^{\text{BIC}} = \exp\!\left(\ell_1 - \ell_0 - \frac{1}{2}\log n\right)$$
+
+The threshold to reach $\text{BF}_{10} > 10$ is $\ell_1 - \ell_0 > \log(10) + \tfrac{1}{2}\log n$. As $n$ increases, this bar rises by $\tfrac{1}{2}\log n$. So the BIC penalty acts as an automatic correction for multiple looks: you need progressively stronger evidence to clear the threshold at larger N, which counteracts the extra opportunities provided by sequential testing.
+
+*Purple (brms Savage-Dickey)* is protected by coherent Bayesian updating. Under H₀ and low noise, each new batch of data shifts the posterior further *toward* zero and makes it narrower — the density at zero in the denominator of $\text{BF}_{10}$ increases rather than decreases. More data therefore drives the BF *away* from a false positive, not toward one. This is the sense in which Bayesian methods are often described as "immune to optional stopping" — provided the model and prior are correctly specified. The Savage-Dickey BF compares two absolute densities:
+
+$$\text{BF}_{10} = \frac{p(\beta = 0 \mid \text{prior})}{p(\beta = 0 \mid \text{data})}$$
+
+The numerator is fixed by the prior — `Normal(0, 1)` gives a density of 0.40 at zero no matter what. The denominator is how tall the posterior is at zero. Under low noise, data are precise and the posterior is narrow and tall, so the density at zero is high → BF₁₀ stays small even by chance. Under high noise, data are imprecise, the posterior spreads out and flattens, so the density at zero drops — even when the true effect *is* zero. This spuriously inflates BF₁₀ above 10 more often, raising the false-positive rate. In short: the Savage-Dickey ratio is **not self-calibrating** with respect to noise — it inherits the sensitivity of the prior width relative to posterior precision, which is a known limitation when the prior is wide relative to the data-generating scale.
+
+**Right column (Power — H₁ is true).** Here we *want* the curves to rise toward 100%. Both methods accumulate power as N grows, but the climb is steeper under **low noise** (top row) than under **high noise** (bottom row), where even N = 60 leaves power well short of 80%. This is the practical message: **more noise requires more data to achieve the same power**, regardless of the decision criterion.
+
+**Key take-aways for this study:**
+
+1.  In a noisy psycholinguistic task the effect size relative to residual variance determines the minimum viable N — not the sample-size formula for a simple t-test.
+2.  A Bayes Factor criterion controls false positives more strictly than α = .05, but at the cost of needing more data to build up power.
+3.  Sequential designs exploit this by checking at multiple checkpoints (N = 30, 45, 60, 75, 90, 105, 120 here) rather than committing to a fixed N — stopping early when evidence is already decisive, and continuing only when it is not.
+
+------------------------------------------------------------------------
+
+
+
+
+# Determining Sample Size: Simulation of a Sequential Design with ROPE Decision Rule
+
+This example shows a **Bayesian sequential design** for determining sample size in an "iconic-duration effect". We asked: how many participants are needed before a Highest Density Interval (HDI)/ROPE criterion results in a decision, and how robust is that decision across plausible effect sizes?
+
+The design is motivated by a pilot experiment that found a large effect of sentence length on event-duration estimates for *short* events (0–10 s; $\hat{\beta} \approx 0.39$ on the log scale, $p < .05$) that was essentially absent for *medium* and *long* events ($\hat{\beta} <0.02$, $p > .90$). The **Hypothesis** is that this should replicate in a more specific design: the effect should be *present* (HDI above ROPE) in the 0–10 s window and *absent* (HDI inside ROPE) in the 20–60 s window.
+
+To assess power and expected sample size, we simulate data under three hypothetical effect-size scenarios — **Conservative**, **Realistic**, and **Optimistic** — based on the pilot estimate for the 0–10 s window. The 10–20 s and 20–60 s windows are simulated with near-zero effects consistent with the pilot, and are varied only to look at ROPE-decision sensitivity. A **sequential stopping rule** checks for decisive HDI/ROPE verdicts starting at N = 30 and after every 15 additional participants (N = 30, 45, 60, 75, 90, 105, 120), halting as soon as both the 0–10 s and 20–60 s windows are resolved — with N = 120 as the hard cap if no prior checkpoint sufficed.
+
+## Pilot Experiment Results
+
+A Linear Mixed Effects Model (LMER) of the pilot data reveals a clear interaction between sentence length and event duration: the effect of sentence length on log-transformed event-duration estimates is large for *short* events but essentially zero for *medium* and *long* events.
+
+```{r}
+#| label: baseline-model
+#| cache: true
+
+# Load pilot data
+rds_path <- if (file.exists("logs/data_edse_duration_estimates.rds")) {
+  "logs/data_edse_duration_estimates.rds"
+} else {
+  "../../logs/data_edse_duration_estimates.rds"
+}
+data.edse <- readRDS(rds_path)
+data.edse$event_duration <- factor(data.edse$event_duration,
+                                   levels = c("instant", "short", "medium", "long"))
+data.edse$sentence_length <- factor(data.edse$sentence_length,
+                                    levels = c("short", "long"))
+
+# Fit interaction model
+mdl2 <- lmer(log_time ~ 1 + sentence_length * event_duration +
+               (1 | Participant.Private.ID) + (1 | id),
+             data = data.edse)
+```
+
+*Model: `log_time ~ sentence_length * event_duration + (1|participant) + (1|item)`, fit by REML with Satterthwaite df.*
+
+**Key findings:** The main effect of `sentence_length: long` ($\hat{\beta} = 0.393$, $p = .021$) captures the effect for the reference category (instant events). Crucially, the interactions for medium and long event durations are both negative and comparable in magnitude to the main effect, indicating near-complete cancellation: the effect **vanishes** for medium and long events ($p > .10$). The `emmeans` contrasts confirm this pattern quantitatively — see tables below.
+
+```{r}
+#| label: baseline-lmer-table
+
+# Extract fixed effects table
+fe <- as.data.frame(coef(summary(mdl2)))
+fe <- fe %>%
+  tibble::rownames_to_column("Term") %>%
+  mutate(
+    Term = dplyr::recode(Term,
+      `(Intercept)`                              = "Intercept",
+      `sentence_lengthlong`                      = "sentence_length: long",
+      `event_durationshort`                      = "event_duration: short",
+      `event_durationmedium`                     = "event_duration: medium",
+      `event_durationlong`                       = "event_duration: long",
+      `sentence_lengthlong:event_durationshort`  = "long × short",
+      `sentence_lengthlong:event_durationmedium` = "long × medium",
+      `sentence_lengthlong:event_durationlong`   = "long × long"
+    )
+  ) %>%
+  rename(Estimate = Estimate, SE = `Std. Error`, df = df,
+         `t value` = `t value`, `p value` = `Pr(>|t|)`) %>%
+  mutate(across(where(is.numeric), \(x) round(x, 3)))
+
+kable(fe, digits = 3,
+      caption = "Baseline lmer: Fixed Effects (REML, Satterthwaite df)") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE) %>%
+  row_spec(which(fe$`p value` < 0.05), bold = TRUE)
+```
+
+```{r}
+#| label: baseline-emmeans-table
+
+emms <- emmeans(mdl2, pairwise ~ sentence_length | event_duration)
+
+# Estimated marginal means
+emm_df <- as.data.frame(summary(emms)$emmeans) %>%
+  mutate(across(where(is.numeric), \(x) round(x, 3)))
+
+kable(emm_df, digits = 3,
+      caption = "Estimated Marginal Means by event_duration × sentence_length (Kenward-Roger df)") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE)
+```
+
+```{r}
+#| label: baseline-contrasts-table
+
+# Pairwise contrasts: short - long within each event_duration
+con_df <- as.data.frame(summary(emms)$contrasts) %>%
+  mutate(
+    Interpretation = case_when(
+      p.value < 0.05 ~ "Strong Effect",
+      p.value < 0.10 ~ "Marginal",
+      TRUE           ~ "No Effect"
+    )
+  ) %>%
+  mutate(across(where(is.numeric), \(x) round(x, 3)))
+
+kable(con_df, digits = 3,
+      caption = "Pairwise Contrasts: short − long sentence length within each event duration") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE) %>%
+  row_spec(which(con_df$p.value < 0.05), bold = TRUE)
+```
+
+## Interpreting Log-Normal Effect Sizes
+
+All models are fitted on the **log scale** because event-duration estimates are log-normally distributed. A coefficient $\beta$ on the log scale corresponds to a multiplicative shift:
+
+$$
+\text{Percent change} = (\exp(\beta) - 1) \times 100
+\qquad
+\text{Absolute difference} = \text{Baseline} \times (\exp(\beta) - 1)
+$$
+
+The **ROPE** (Region of Practical Equivalence) is set to a uniform $\pm 0.10$ on the log scale for all three time windows, corresponding to roughly $\pm 10\%$ multiplicative change — approximately $\pm 0.9$ s on the 9 s baseline (0–10 s window) and $\pm 3$ s on the 30 s baseline (20–60 s window). An effect is declared *present* when the full 95% HDI lies above the ROPE upper bound, and *absent* when the full 95% HDI lies within the ROPE.
+
+> **Why not ±0.05?** A tighter ROPE of $\pm 0.05$ is analytically infeasible for the exclusion arm. The posterior SE on the 20–60 s effect at N = 120 is $\approx 0.019$; with a true effect of $\beta \approx 0.002$, the mean HDI upper bound is $\approx 0.002 + 1.96 \times 0.019 \approx 0.039$ — right at the boundary. Sampling noise pushes the majority of runs above 0.05, making the ABSENT verdict structurally unachievable before the hard cap of N = 120. Replaying the stopping rule across all stored simulation results confirms this: with ROPE = ±0.05 virtually 100% of simulations never reach a DECIDED state.
+
+> **Why not a per-bin ROPE anchored to absolute seconds?** The simulation code includes a helper (`compute_bin_ropes`) that converts an absolute threshold $\delta_s$ seconds into a per-bin log-scale ROPE via $\log(1 + \delta_s / \text{baseline}_\text{bin})$. Because the 20–60 s bin has a longer baseline (~30 s), its log-scale ROPE is *tighter* than the 0–10 s bin's. For example, with $\delta_s = 0.5$ s:
+>
+> | Window | Baseline | Per-bin ROPE |
+> |:-------|:--------:|:------------:|
+> | 0–10 s | ~9 s | ±0.054 |
+> | 10–20 s | ~15 s | ±0.033 |
+> | 20–60 s | ~30 s | ±0.017 |
+>
+> This makes the ABSENT verdict for the 20–60 s window *harder* to reach, not easier — the opposite of what is needed. Choosing a large $\delta_s$ (e.g. 3 s) to bring the 20–60 s ROPE near ±0.10 simultaneously inflates the 0–10 s ROPE to ~±0.29, which would allow almost any effect to be declared ABSENT in the early window, undermining the PRESENT criterion. The uniform ±0.10 is therefore both simpler and better justified.
+
+**Practical magnitude reference (9 s baseline, 0–10 s window):**
+
+| Log Effect ($\beta$) | Percent Change | Time Difference | Context |
+|:-----------------|:-----------------|:-----------------|:-----------------|
+| **0.451** | +57% | \~5.1s | **Optimistic Simulation (0–10s)** |
+| **0.392** | +48% | \~4.3s | **Realistic Simulation / Observed in Baseline** |
+| **0.294** | +34% | \~3.1s | **Conservative Simulation (0–10s)** |
+| **0.10** | +10% | \~0.9s | ROPE Boundary (Negligible) |
+
+*Note: A log effect of 0.294 is substantial, representing a \~3.1 second slowdown on a 9-second event. The 0–10s bin effective baseline is exp(2.7 − 0.5) = exp(2.2) ≈ 9s.*
+
+
+## Frequentist reference: conventional power analysis
+
+How many participants would a standard NHST power analysis suggest? In a within-participant design where each participant provides responses to $n_{items} = 10$ items per sentence-length condition, the relevant quantity for a one-sample t-test on participants' estimated contrasts is the *between-participant SD of that contrast*. This has two components: measurement noise from averaging over items ($\sqrt{2\,\sigma^2_\varepsilon / n_{items}}$, using the pilot residual SD $\sigma_\varepsilon \approx 0.35$), and genuine variability in individual sentence-length sensitivity ($\sigma_{slope} \approx 0.10$, taken from the simulation's data-generating process):
+
+$$SD_{contrast} = \sqrt{\frac{2\,\sigma^2_\varepsilon}{n_{items}} + \sigma^2_{slope}} = \sqrt{\frac{2 \times 0.35^2}{10} + 0.10^2} \approx 0.186$$
+
+$$d = \frac{\hat\beta_{0\text{–}10s}}{SD_{contrast}} = \frac{0.392}{0.186} \approx 2.11$$
+
+```{r}
+#| label: freq-power
+
+beta_pilot <- 0.39168   # pilot emmeans contrast, log scale, 0–10 s window
+sigma_eps  <- 0.35      # residual SD (from simulation data-generating process / pilot)
+sd_slope   <- 0.10      # between-participant SD in sentence-length sensitivity
+n_items    <- 10        # items per condition per participant
+
+# Per-participant contrast SD
+sd_contrast <- sqrt(2 * sigma_eps^2 / n_items + sd_slope^2)
+
+# Naive lower bound: ignore repeated-measures structure entirely
+d_naive    <- beta_pilot / sigma_eps
+d_informed <- beta_pilot / sd_contrast
+
+power_tbl <- tibble::tibble(
+  `Power target` = c("80 %", "90 %", "95 %"),
+  `N — naive d (= β/σ_ε ≈ 1.12)` = ceiling(
+    sapply(c(.80, .90, .95), function(pw)
+      power.t.test(delta = beta_pilot, sd = sigma_eps,
+                   sig.level = .05, power = pw, type = "one.sample")$n)),
+  `N — informed d (= β/SD_contrast ≈ 2.11)` = ceiling(
+    sapply(c(.80, .90, .95), function(pw)
+      power.t.test(delta = beta_pilot, sd = sd_contrast,
+                   sig.level = .05, power = pw, type = "one.sample")$n))
+)
+
+knitr::kable(
+  power_tbl,
+  caption = paste0(
+    "Required N under a one-sample t-test on participant-level contrasts ",
+    "(\u03b1 = .05, two-tailed). ",
+    "The naive estimate treats \u03c3\u03b5 as the only source of variance; ",
+    "the informed estimate additionally accounts for between-participant ",
+    "slope variability and repeated measures over items."
+  )
+) |> kableExtra::kable_styling(bootstrap_options = c("striped", "hover"),
+                                full_width = FALSE)
+```
+
+The N = 5–13 figures above look implausibly small — and they are. They are the correct answer to a question that does not match the actual design. Four limitations explain the gap between this calculation and the N = 60 first checkpoint used in the simulation:
+
+1.  **Model complexity.** `power.t.test()` treats each participant as providing a single number (their estimated contrast). The actual analysis model is `log_duration ~ sentence_length × duration_bin + (1 + sentence_length | participant) + (1 | item)`. Fitting random slopes for sentence length by participant requires estimating the slope variance *and* its correlation with the random intercept. Mixed-effects models with random slopes generally need at least 20–40 participants for those variance components to be identified at all; below \~20 the model routinely returns singular covariance matrices and the fixed-effect uncertainty is badly underestimated. N = 5–13 is not a viable sample for this model.
+
+    *What about a random intercept only model?* A simpler `(1 | participant) + (1 | item)` model can be identified with fewer participants (\~10–20 is usually sufficient). For the power calculation this also removes the slope SD from the contrast variance, dropping $SD_{contrast}$ from 0.186 to $\sqrt{2\sigma_\varepsilon^2/n_{items}} \approx 0.157$ — making $d \approx 2.50$ and the t-test N even smaller. However, a random intercept only model is **misspecified** here: the data-generating process draws each participant's slope from $\mathcal{N}(0,\,0.10^2)$, so genuine between-participant slope variability exists. Dropping the random slope absorbs that variance into the residual ($\hat\sigma_\varepsilon$ increases), widens the fixed-effect credible intervals, and produces overconfident fixed-effect estimates. The random slope model is therefore both statistically necessary and the reason N cannot be as low as the t-test suggests. Even so, the N = 5–13 gap is not bridged: a random intercept model at N = 15–20 would still fail on limitation 2 below.
+
+2.  **ROPE inclusion is harder than significance.** The t-test targets *detection* — HDI outside ROPE in the 0–10 s window. But the design also needs an *absence* verdict in the 20–60 s window: the full 95% HDI must lie entirely *within* ±0.10. Posterior precision must be high enough to exclude even modest effects. This is asymmetrically demanding: a tight "present" decision is achievable with a large effect, but a tight "absent" verdict requires that the *upper* HDI bound falls below 0.10 — which takes considerably more data when the true effect is near zero.
+
+3.  **Effect-size uncertainty.** The pilot estimate $\hat\beta = 0.39$ carries substantial uncertainty; a slightly smaller true effect (the Conservative scenario, $\beta = 0.294$) would require more participants, and the t-test formula gives no guidance on how the required N scales with that uncertainty.
+
+4.  **Fixed-N and sequential inflation.** The conventional formula assumes data collection runs to a predetermined N. A sequential stopping rule inflates Type I error without adjustment, and the *expected* stopping N under the rule is not directly estimable from `power.t.test()`.
+
+5.  **An alternative framing: sensitivity analysis.** Rather than asking "what N gives 80% power?", it is often more useful to ask the inverse: *given our design (N = 60, 10 items per condition, the pilot's variance components), what is the smallest effect we could reliably detect?* This reframes the problem as a **minimum detectable effect (MDE)** calculation and is more honest when the true effect size is uncertain. Inverting the Snijders–Bosker SE formula for 80% power at α = .05 gives:
+
+    $$\beta_{\min} = z_{1-\alpha/2} \cdot \text{SE}(\hat\beta) \cdot (z_{0.8} + z_{1-\alpha/2}) / z_{1-\alpha/2} \approx 2.80 \times \text{SE}$$
+
+    with $\text{SE} \approx SD_{contrast}/\sqrt{N} = 0.186/\sqrt{60} \approx 0.024$, giving $\beta_{\min} \approx 0.067$ on the log scale — well below even the Conservative scenario (0.294). This confirms the design is generously powered for *detection*, but it still cannot address the ROPE-absence criterion (limitation 2) or the random-slope identification floor (limitation 1), for which the full Bayesian simulation remains necessary.
+
+The Bayesian HDI/ROPE simulation below addresses all five by working with the actual generative model, fitting the actual analysis model, and evaluating decisions in both windows simultaneously. The N = 60 first checkpoint reflects the mixed-model requirement, not the t-test estimate.
+
+
+## Simulation Parameters & Justification
+
+The three scenarios are *hypothetical* bounding cases built around the pilot 0–10 s contrast ($\hat{\beta} = 0.392$). They are **not** direct extrapolations of the pilot for later windows — the pilot shows essentially no effect there, and the simulation near-zero values (0.009–0.023 for 10–20 s; 0.000–0.003 for 20–60 s) reflect this.
+
+### Effect Size Assumptions (Log Scale)
+
+| Window | Conservative | Realistic | Optimistic | Derivation |
+|:--------------|:--------------|:--------------|:--------------|:--------------|
+| **0–10s** | 0.294 | 0.392 | 0.451 | pilot × 0.75 / pilot / pilot × 1.15 |
+| **10–20s** | 0.009 | 0.015 | 0.023 | avg(medium,long) / medium / medium × 1.5 |
+| **20–60s** | 0.000 | 0.002 | 0.003 | 0 / long / long × 1.5 |
+
+*Pilot emmeans contrasts (β, log scale): instant/short events = 0.392, medium = 0.015, long = 0.002. The 10–20 s and 20–60 s simulation values closely mirror the pilot; the 0–10 s values bracket the pilot estimate.*
+
+> **Note on divergence from pilot:** The 0–10 s Conservative scenario (0.294) is 25% below the pilot estimate, while Optimistic (0.451) is 15% above. For the later windows the simulation values are so close to the pilot that the distinction is practically irrelevant — all are well inside the ROPE (±0.10).
+
+### Sample Size & Power
+
+In a sequential Bayesian design, *power* has two components — one for each decision the stopping rule must reach.
+
+**Detection power (0–10 s window).** This is the probability that, at some checkpoint, the 95% HDI lies entirely *above* the ROPE upper bound and a PRESENT verdict is returned before the hard cap. Given the large effect size ($d \approx 2.11$), detection is not the binding constraint: even at N = 60 the probability of a PRESENT verdict is high across all three scenarios. The conventional t-test power analysis in the previous section addressed *only* this arm — which is why it returned N = 5–13.
+
+**Exclusion power (20–60 s window).** This is the probability that, at some checkpoint, the 95% HDI lies entirely *inside* the ROPE ±0.10 and an ABSENT verdict is returned. This is the binding constraint. The design cannot stop early unless *both* windows are resolved, and the ABSENT verdict cannot be reached until the posterior on the 20–60 s effect is tight enough to exclude even modest effects. As the table below shows, the ROPE boundary is geometrically achievable from N ≈ 30 onward — but the minimum viable N is still 60 due to the random-effects model structure (see below). No conventional power formula captures this — a t-test for H₀ : β = 0 tells you nothing about the sample size needed to *confirm* β ≈ 0 with a ROPE criterion.
+
+The checkpoint schedule follows from this asymmetry. With ROPE = ±0.10, the exclusion arm is geometrically achievable from N = 30 onward (mean HDI upper bound ≈ 0.069 at N = 30, inside the ROPE). Starting checks at N = 30 and repeating every 15 participants therefore allows the design to stop as soon as both arms are resolved. The earliest *reliable* stopping point is N ≈ 60 because of the random-effects covariance structure (see below), but the earlier checkpoints are included to capture the occasional run where evidence is already overwhelming.
+
+-   **Sequential checkpoints:** N = 30, 45, 60, 75, 90, 105, 120. Sampling stops at the first checkpoint where both the 0–10 s and 20–60 s windows receive decisive HDI/ROPE verdicts. The schedule was chosen as follows:
+
+    -   **N = 30 and 45 (early checkpoints, exploratory).** With ROPE = ±0.10 the HDI upper bound on the 20–60 s effect is already inside the ROPE at N = 30 on average ($\approx 0.069 < 0.10$), so stopping is geometrically possible. However, inferences from these fits should be treated cautiously: random-slope covariance parameters are under-identified below N ≈ 50–60 and brms can return divergent transitions or low bulk-ESS, which inflates fixed-effect uncertainty. Any DECIDED verdict at N = 30 or 45 is therefore an opportunistic early stop in the Optimistic scenario, not a design target.
+
+    -   **N = 60 (first reliable checkpoint).** This is the minimum viable sample for the analysis model, for two reasons.
+
+        *Random-effects covariance structure.* Reliably estimating the random-slope variance ($\sigma_{slope}$) requires it to be distinguishable from zero against a background of residual noise. Here $\sigma_{slope} = 0.10$ is small relative to $\sigma_\varepsilon = 0.35$ (signal-to-noise ratio ≈ 0.29). Using the chi-squared approximation for variance estimation, the 95% interval for $\hat\sigma_{slope}$ at N = 30 is roughly $[0.075,\, 0.143]$ — a ±40% margin around the true value. The slope–intercept correlation adds a further estimated parameter; with 30 participants the 95% interval for a correlation is $\pm 1.96/\sqrt{30-3} \approx \pm 0.38$, meaning it is essentially unconstrained by data. At N = 60, the slope SD interval narrows to approximately $[0.082,\, 0.126]$ (±25%) and the correlation interval to $\pm 0.27$, giving the sampler enough information to anchor the covariance matrix without relying heavily on the LKJ(2) prior.
+
+        *ABSENT verdict threshold.* The posterior SE of the sentence-length fixed effect in a random-slopes model is approximately $SD_{contrast}/\sqrt{N}$, where $SD_{contrast} \approx 0.186$ (derived above). For the ABSENT decision, the *upper* 95% HDI bound on the 20–60 s effect must fall below the ROPE boundary of 0.10. With the true effect at $\beta \approx 0.002$, the upper bound is approximately $0.002 + 1.96 \times 0.186/\sqrt{N}$:
+
+        |      N | Approx. SE | Upper HDI bound | ABSENT verdict possible? |
+        |-------:|:----------:|:---------------:|:------------------------:|
+        |     30 |   0.034    |      0.069      |      Yes ($< 0.10$)      |
+        |     45 |   0.028    |      0.057      |      Yes ($< 0.10$)      |
+        | **60** | **0.024**  |    **0.049**    |    **Yes** ($< 0.10$)    |
+        |     90 |   0.020    |      0.041      |           Yes            |
+
+        The binding constraint at N = 60 is therefore the random-effects covariance structure, not the ROPE boundary. N = 60 is the earliest point at which both the ROPE and the model-identification requirements are credibly satisfied simultaneously.
+
+    -   **N = 75, 90, 105 (intermediate checkpoints).** Each adds a batch of 15 participants, providing frequent opportunities to stop if the earlier checkpoints were not decisive. The finer grid (every 15 rather than every 30) reduces expected over-enrollment relative to the original three-checkpoint design.
+
+    -   **N = 120 (hard cap).** A maximum of 120 is consistent with the practical limits of lab-based psycholinguistics experiments and is approximately $3\times$ the minimum viable N. If neither the 0–10 s PRESENT nor the 20–60 s ABSENT decision has been reached by N = 120, it is likely that the true effect is smaller than any of the three simulated scenarios, and the study should be reported with the data collected rather than extended further.
+
+-   **Target:** N = 60 remains the primary expected stopping point. Simulations indicate that for the Realistic scenario ($\beta = 0.392$), the 95% HDI clears the ROPE upper bound at N = 60 in the large majority of runs. The finer grid (every 15 from N = 30) means over-enrollment is reduced if evidence is decisive earlier.
+
+-   **Conservative floor:** Even at $\beta = 0.294$ (Conservative scenario), the effect is $\approx 3\times$ the ROPE half-width, so N = 60 remains sufficient. Smaller effects ($\beta \approx 0.10$, i.e., \~1 s absolute) would require N = 250–300 and are not of theoretical interest here.
+
+-   **Analysis model:** `log_duration ~ sentence_length × duration_bin + (1 + sentence_length | participant) + (1 | item)`, fit with `brms` using weakly informative priors. Random slopes for sentence length by participant match the data-generating process.
+
+
+# Data Summary
+
+**Total Simulations Analyzed:** `r n_total`
+
+The dataset consists of `r n_total` independent simulation runs across the three hypothetical effect-size scenarios (Conservative, Realistic, Optimistic). Each run generates a synthetic dataset, fits a Bayesian mixed-effects model, and applies the sequential stopping rule — checking at N = 30, 45, 60, 75, 90, 105, and 120 and halting as soon as both time windows yield a decisive HDI/ROPE verdict. The table below summarises how many participants were enrolled before stopping in each scenario.
+
+```{r}
+#| label: sample_summary
+
+sample_summary <- all_data %>%
+  group_by(Scenario = scenario) %>%
+  summarise(
+    `Simulations Run` = n(),
+    `Mean Enrolled at Stop` = round(mean(n_participants), 1),
+    `Enrolled at Stop: Range` = paste(min(n_participants), "\u2013", max(n_participants)),
+    `SD (Enrolled at Stop)` = round(sd(n_participants), 1)
+  )
+
+kable(
+  sample_summary,
+  digits = 1,
+  caption = paste0(
+    "Participants enrolled when the sequential stopping rule halted each simulation. ",
+    "Possible stopping points are N\u202f=\u202f30, 45, 60, 75, 90, 105, 120. ",
+    "A lower mean indicates the HDI/ROPE decision was reached earlier and with less data."
+  )
+) %>%
+  kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
+# Effect Size Analysis
+
+## Mean Effects by Time Window
+
+The simulation generated data based on assumed effect sizes that decay over time. The following table summarizes the recovered posterior mean effects (β, log scale) for each time window.
+
+```{r}
+#| label: effect_summary
+
+effect_summary <- all_data %>%
+  group_by(scenario) %>%
+  summarise(
+    "0-10s (Mean)" = mean(mean_0_10s, na.rm = TRUE),
+    "0-10s (SD)" = sd(mean_0_10s, na.rm = TRUE),
+    "10-20s (Mean)" = mean(mean_10_20s, na.rm = TRUE),
+    "10-20s (SD)" = sd(mean_10_20s, na.rm = TRUE),
+    "20-60s (Mean)" = mean(mean_20_60s, na.rm = TRUE),
+    "20-60s (SD)" = sd(mean_20_60s, na.rm = TRUE)
+  )
+
+kable(effect_summary, digits = 3, caption = "Recovered Posterior Mean Effects (\u03b2, log scale)") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
+## Visual Comparison
+
+### Distribution of Effects (0-10s Window)
+
+The 0-10s window contains the primary signal. The plot below illustrates the clear separation between scenarios.
+
+```{r}
+#| label: fig-density-0-10s
+#| fig-cap: "Density distribution of mean effect sizes in the 0-10s window."
+
+ggplot(all_data, aes(x = mean_0_10s, fill = scenario)) +
+  geom_density(alpha = 0.6) +
+  scale_fill_manual(values = c("Conservative" = "#1f77b4",
+                               "Realistic" = "#ff7f0e",
+                               "Optimistic" = "#2ca02c")) +
+  labs(title = "Effect Size Distribution (0-10s)",
+       x = "Mean Effect Size (d)",
+       y = "Density",
+       fill = "Scenario") +
+  theme_minimal() +
+  theme(legend.position = "top")
+```
+
+### Violin Plots (Distribution Shape)
+
+Violin plots combined with boxplots provide a detailed view of the effect size distributions across scenarios.
+
+```{r}
+#| label: fig-violin
+#| fig-cap: "Violin plots showing the kernel density of effect sizes for each time window and scenario."
+
+# Prepare long format data
+plot_data <- all_data %>%
+  pivot_longer(
+    cols = c(mean_0_10s, mean_10_20s, mean_20_60s),
+    names_to = "time_window",
+    values_to = "effect_size"
+  ) %>%
+  mutate(time_window = factor(
+    time_window,
+    levels = c("mean_0_10s", "mean_10_20s", "mean_20_60s"),
+    labels = c("0-10s", "10-20s", "20-60s")
+  ),
+  scenario = factor(scenario, levels = c("Conservative", "Realistic", "Optimistic")))
+
+ggplot(plot_data, aes(x = time_window, y = effect_size, fill = scenario)) +
+  geom_violin(alpha = 0.7, position = position_dodge(width = 0.9)) +
+  geom_boxplot(width = 0.1, position = position_dodge(width = 0.9),
+               fill = "white", color = "black", linewidth = 0.4) +
+  scale_fill_manual(values = c("Conservative" = "#1f77b4",
+                               "Realistic" = "#ff7f0e",
+                               "Optimistic" = "#2ca02c")) +
+  labs(title = "Effect Size Distribution by Window",
+       x = "Time Window",
+       y = "Effect Size (d)",
+       fill = "Scenario") +
+  theme_minimal() +
+  theme(legend.position = "top")
+```
+
+### Effect Size Heatmap
+
+This heatmap visualizes the mean effect size, allowing for quick comparison of magnitude across all conditions.
+
+```{r}
+#| label: fig-heatmap
+#| fig-cap: "Heatmap of mean effect sizes."
+
+# Calculate means for heatmap
+heatmap_data <- plot_data %>%
+  group_by(scenario, time_window) %>%
+  summarise(mean_effect = mean(effect_size, na.rm = TRUE), .groups = "drop")
+
+ggplot(heatmap_data, aes(x = time_window, y = scenario)) +
+  geom_tile(aes(fill = mean_effect), color = "white", linewidth = 1) +
+  geom_text(aes(label = sprintf("%.3f", mean_effect)),
+            color = "white", size = 5, fontface = "bold") +
+  scale_fill_gradient(low = "#f7fbff", high = "#08519c", name = "Mean Effect") +
+  labs(title = "Mean Effect Size Heatmap",
+       x = "Time Window",
+       y = "Scenario") +
+  theme_minimal() +
+  theme(panel.grid = element_blank())
+```
+
+### Temporal Trajectory
+
+This plot demonstrates the temporal decay of the effect size from the early window (0-10s) to the late window (20-60s).
+
+```{r}
+#| label: fig-trajectory
+#| fig-cap: "Mean effect size trajectory across time windows with 95% Confidence Intervals."
+
+# Reshape data for plotting
+trajectory_data <- all_data %>%
+  pivot_longer(cols = c(mean_0_10s, mean_10_20s, mean_20_60s),
+               names_to = "Time_Window",
+               values_to = "Effect_Size") %>%
+  mutate(Time_Window = factor(Time_Window,
+                              levels = c("mean_0_10s", "mean_10_20s", "mean_20_60s"),
+                              labels = c("0-10s", "10-20s", "20-60s"))) %>%
+  group_by(scenario, Time_Window) %>%
+  summarise(
+    Mean = mean(Effect_Size, na.rm = TRUE),
+    SE = sd(Effect_Size, na.rm = TRUE) / sqrt(n()),
+    .groups = "drop"
+  ) %>%
+  mutate(
+    CI_Lower = Mean - 1.96 * SE,
+    CI_Upper = Mean + 1.96 * SE
+  )
+
+ggplot(trajectory_data, aes(x = Time_Window, y = Mean, color = scenario, group = scenario)) +
+  geom_line(linewidth = 1) +
+  geom_point(size = 3) +
+  geom_errorbar(aes(ymin = CI_Lower, ymax = CI_Upper), width = 0.1) +
+  scale_color_manual(values = c("Conservative" = "#1f77b4",
+                                "Realistic" = "#ff7f0e",
+                                "Optimistic" = "#2ca02c")) +
+  labs(title = "Effect Size Trajectory",
+       x = "Time Window",
+       y = "Mean Effect Size (d)",
+       color = "Scenario") +
+  theme_minimal() +
+  theme(legend.position = "top")
+```
+
+# Hypothesis Support
+
+A key metric is the rate at which the Bayesian Sequential Design supports the hypothesis (H2) given the decision criteria (ROPE exclusion).
+
+```{r}
+#| label: fig-h2-support
+#| fig-cap: "Percentage of simulations supporting H2."
+
+h2_summary <- all_data %>%
+  group_by(scenario) %>%
+  summarise(
+    Support_Rate = mean(h2_supported, na.rm = TRUE) * 100
+  )
+
+ggplot(h2_summary, aes(x = scenario, y = Support_Rate, fill = scenario)) +
+  geom_col(alpha = 0.8, width = 0.7) +
+  geom_text(aes(label = sprintf("%.1f%%", Support_Rate)), vjust = -0.5) +
+  scale_fill_manual(values = c("Conservative" = "#1f77b4",
+                               "Realistic" = "#ff7f0e",
+                               "Optimistic" = "#2ca02c")) +
+  ylim(0, 105) +
+  labs(title = "Hypothesis (H2) Support Rates",
+       x = "Scenario",
+       y = "Support Rate (%)",
+       fill = "Scenario") +
+  theme_minimal() +
+  theme(legend.position = "none")
+```
+
+**Interpretation:** All three scenarios show very high H2 support rates because every scenario places the 0–10 s effect well outside the ROPE (smallest: $\beta = 0.294$, ROPE upper bound: $0.10$) while the 20–60 s effect is near zero. The sequential design can therefore reliably distinguish the two windows with N ≤ 90 under all plausible scenarios.
+
+# Additional Analysis
+
+## Sample Size Distribution
+
+The sequential design stops data collection when evidence is sufficient. This histogram shows the distribution of final sample sizes.
+
+```{r}
+#| label: fig-sample-size-dist
+#| fig-cap: "Distribution of final sample sizes across scenarios."
+
+ggplot(all_data, aes(x = n_participants, fill = scenario)) +
+  geom_histogram(alpha = 0.6, bins = 20, color = "black", linewidth = 0.3) +
+  facet_wrap(~factor(scenario, levels = c("Conservative", "Realistic", "Optimistic")),
+             ncol = 3) +
+  scale_fill_manual(values = c("Conservative" = "#1f77b4",
+                               "Realistic" = "#ff7f0e",
+                               "Optimistic" = "#2ca02c")) +
+  labs(title = "Sample Size Distribution",
+       x = "Number of Participants",
+       y = "Frequency",
+       fill = "Scenario") +
+  theme_minimal() +
+  theme(legend.position = "none")
+```
+
+## Correlation: Early vs. Mid-Temporal Effects
+
+Exploring the relationship between the immediate effect (0-10s) and the sustained effect (10-20s).
+
+```{r}
+#| label: fig-scatter
+#| fig-cap: "Scatter plot correlating effect sizes in 0-10s vs 10-20s windows."
+
+ggplot(all_data, aes(x = mean_0_10s, y = mean_10_20s, color = scenario)) +
+  geom_point(alpha = 0.6, size = 3) +
+  geom_smooth(method = "lm", se = TRUE, alpha = 0.1, linewidth = 1) +
+  facet_wrap(~factor(scenario, levels = c("Conservative", "Realistic", "Optimistic")),
+             ncol = 3) +
+  scale_color_manual(values = c("Conservative" = "#1f77b4",
+                                "Realistic" = "#ff7f0e",
+                                "Optimistic" = "#2ca02c")) +
+  labs(title = "Correlation: 0-10s vs 10-20s",
+       x = "Effect Size (0-10s)",
+       y = "Effect Size (10-20s)",
+       color = "Scenario") +
+  theme_minimal() +
+  theme(legend.position = "none")
+```
+
+# Key Findings
+
+1.  **Temporal specificity confirmed:** The effect is strongly localised in the **0–10 s window** across all scenarios. The 20–60 s window consistently returns HDI inside (or straddling) the ROPE, enabling an ABSENT decision by N = 60–90.
+2.  **Sequential efficiency:** The design stops early in the vast majority of simulations (mean stopping N ≈ 60–65), well before the maximum of N = 120.
+3.  **Robustness to effect-size uncertainty:** Even under the Conservative scenario ($\beta = 0.294$, 25% below the pilot estimate), H2 support rates are high, confirming the design is not critically sensitive to modest over-estimation of the pilot effect.
+4.  **Late windows:** The 10–20 s window is left undecided in most simulations — consistent with the near-zero pilot estimate and expected under the simulation's data-generating process. This is not a failure of the design; it reflects genuine absence of a theoretically relevant effect in that window.
+
+# Conclusion
+
+The Bayesian sequential design is well-powered to detect the hypothesised iconic-duration effect and simultaneously affirm its absence in the late time window. Across all three scenarios the design stops at or near N = 60 in most simulations. The critical precondition is that the 0–10 s effect in the full experiment is at least $\beta \approx 0.29$ (log scale, $\approx 3$ s on a 9 s baseline) — a conservative bound 25% below the pilot estimate. Given the robustness of the pilot findings, this is a reasonable floor.
+
+Note that the simulation results reported here were produced with the following model specification that correctly matches the data-generating process: random slopes for sentence length by participant, `prior(lkj(2), class = cor)`, and independent RNG seeds per simulation replicate. Earlier archived results used a simpler random-intercept-only model and should be considered superseded.
+
+------------------------------------------------------------------------
+
+*Report generated on `r format(Sys.time(), '%Y-%m-%d %H:%M:%S')`*

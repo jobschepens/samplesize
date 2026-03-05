@@ -1,0 +1,228 @@
+---
+title: "Comprehensive Simulation Analysis Report"
+subtitle: "With Beautiful Visualizations and Statistical Insights"
+author: "Simulation Research"
+date: "`r Sys.Date()`"
+format:
+  html:
+    theme: cosmo
+    toc: true
+    toc-depth: 3
+    code-fold: true
+    code-summary: "View Code"
+    fig-width: 12
+    fig-height: 8
+    number-sections: true
+    embed-resources: true
+---
+
+# Overview
+
+This comprehensive report analyzes simulation results across three distinct effect size scenarios with beautiful visualizations and detailed statistical comparisons.
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(knitr)
+
+# Ensure proper relative path if rendering from reports/qmd/
+# If rendering from project root, adjusted path logic is needed.
+
+# Source the centralized data loader
+# Note: Adjust path depending on where you render from. 
+# Assuming project root context for now.
+source("../../scripts/load_results.R")
+
+# Load simulation results
+all_data <- load_simulation_results(data_dir = "../../data/csv")
+```
+
+# Data Summary
+
+**Total Simulations:** `r nrow(all_data)`
+
+| Scenario | N | Mean Participants | Range |
+|----------|---|-------------------|-------|
+| Conservative | `r nrow(filter(all_data, scenario == "Conservative"))` | `r round(mean(filter(all_data, scenario == "Conservative")$n_participants), 1)` | `r min(filter(all_data, scenario == "Conservative")$n_participants)` - `r max(filter(all_data, scenario == "Conservative")$n_participants)` |
+| Realistic | `r nrow(filter(all_data, scenario == "Realistic"))` | `r round(mean(filter(all_data, scenario == "Realistic")$n_participants), 1)` | `r min(filter(all_data, scenario == "Realistic")$n_participants)` - `r max(filter(all_data, scenario == "Realistic")$n_participants)` |
+| Optimistic | `r nrow(filter(all_data, scenario == "Optimistic"))` | `r round(mean(filter(all_data, scenario == "Optimistic")$n_participants), 1)` | `r min(filter(all_data, scenario == "Optimistic")$n_participants)` - `r max(filter(all_data, scenario == "Optimistic")$n_participants)` |
+
+# Effect Size Distributions
+
+## Time Window 0-10s
+
+The initial time window shows the strongest effects. This window captures the immediate response to the stimulus. The red shaded region indicates the ROPE (Region of Practical Equivalence) on the log scale [-0.05, +0.05].
+
+![Density Distribution: 0-10s Window (red region = ROPE)](01_density_0_10s.png)
+
+**Summary Statistics:**
+
+```{r, echo=FALSE}
+summary_0_10 <- all_data %>%
+  group_by(scenario) %>%
+  summarise(
+    Mean = mean(mean_0_10s, na.rm = TRUE),
+    SD = sd(mean_0_10s, na.rm = TRUE),
+    Min = min(mean_0_10s, na.rm = TRUE),
+    Q1 = quantile(mean_0_10s, 0.25, na.rm = TRUE),
+    Median = median(mean_0_10s, na.rm = TRUE),
+    Q3 = quantile(mean_0_10s, 0.75, na.rm = TRUE),
+    Max = max(mean_0_10s, na.rm = TRUE),
+    .groups = "drop"
+  )
+kable(summary_0_10, digits = 4)
+```
+
+## Time Window 10-20s
+
+The second time window shows moderate effects, approximately 50-60% reduction from the initial window. The red shaded region indicates the ROPE on the log scale.
+
+![Density Distribution: 10-20s Window (red region = ROPE)](02_density_10_20s.png)
+
+**Summary Statistics:**
+
+```{r, echo=FALSE}
+summary_10_20 <- all_data %>%
+  group_by(scenario) %>%
+  summarise(
+    Mean = mean(mean_10_20s, na.rm = TRUE),
+    SD = sd(mean_10_20s, na.rm = TRUE),
+    Min = min(mean_10_20s, na.rm = TRUE),
+    Q1 = quantile(mean_10_20s, 0.25, na.rm = TRUE),
+    Median = median(mean_10_20s, na.rm = TRUE),
+    Q3 = quantile(mean_10_20s, 0.75, na.rm = TRUE),
+    Max = max(mean_10_20s, na.rm = TRUE),
+    .groups = "drop"
+  )
+kable(summary_10_20, digits = 4)
+```
+
+## Time Window 20-60s
+
+The final time window shows minimal and highly variable effects, clustering around zero. The red shaded region indicates the ROPE on the log scale.
+
+![Density Distribution: 20-60s Window (red region = ROPE)](03_density_20_60s.png)
+
+**Summary Statistics:**
+
+```{r, echo=FALSE}
+summary_20_60 <- all_data %>%
+  group_by(scenario) %>%
+  summarise(
+    Mean = mean(mean_20_60s, na.rm = TRUE),
+    SD = sd(mean_20_60s, na.rm = TRUE),
+    Min = min(mean_20_60s, na.rm = TRUE),
+    Q1 = quantile(mean_20_60s, 0.25, na.rm = TRUE),
+    Median = median(mean_20_60s, na.rm = TRUE),
+    Q3 = quantile(mean_20_60s, 0.75, na.rm = TRUE),
+    Max = max(mean_20_60s, na.rm = TRUE),
+    .groups = "drop"
+  )
+kable(summary_20_60, digits = 4)
+```
+
+# Comparative Analysis
+
+## Boxplot Comparison
+
+This visualization shows the distribution of effects across all scenarios and time windows simultaneously, with overlaid individual observations. The red horizontal shaded bands indicate the ROPE boundaries, making it easy to see whether effects fall within or outside the region of practical equivalence.
+
+![Boxplots Across All Time Windows (red region = ROPE)](04_boxplot_all_windows.png)
+
+## Distribution Shapes
+
+Violin plots reveal the full distributional shape of effects in each scenario, combined with boxplot summaries.
+
+![Violin Plot Distributions](05_violin_plots.png)
+
+## Temporal Trajectory
+
+The mean effects trajectory shows clear temporal decay across all scenarios, with confidence intervals indicating precision.
+
+![Mean Effect Trajectory with 95% CI](06_mean_trajectory.png)
+
+**Key Observation:** The effect sizes decline sharply from the 0-10s window to the 20-60s window, suggesting the phenomenon is temporally localized.
+
+## Effect Size Heatmap
+
+This heatmap provides a compact view of mean effects across all scenarios and time windows.
+
+![Effect Size Heatmap](08_effect_heatmap.png)
+
+# Hypothesis Testing Results
+
+## H2 Support Rates
+
+```{r, echo=FALSE}
+h2_summary <- all_data %>%
+  group_by(scenario) %>%
+  summarise(
+    Total = n(),
+    Supported = sum(h2_supported, na.rm = TRUE),
+    "Support Rate (%)" = round(mean(h2_supported, na.rm = TRUE) * 100, 2),
+    .groups = "drop"
+  )
+kable(h2_summary)
+```
+
+![Hypothesis Support Rates](07_h2_support_rates.png)
+
+**Interpretation:** The inverse relationship between effect size assumptions and support rates suggests a sensitivity-specificity tradeoff. More stringent criteria (Conservative) provide higher support rates, while more lenient criteria (Optimistic) show lower support but potentially detect subtle effects.
+
+# Sample Size Analysis
+
+![Sample Size Distribution](09_sample_size_dist.png)
+
+The optimistic scenario shows more variable sample sizes (ranging up to 120 participants) compared to the conservative scenario (capped at 90 participants), suggesting differential allocation strategies.
+
+# Correlation Analysis
+
+## Effect Size Relationships
+
+![Scatter Plot: 0-10s vs 10-20s Effects](10_scatter_effects.png)
+
+The scatter plots reveal positive correlations between early (0-10s) and mid-temporal (10-20s) effects across all scenarios, suggesting that strong early effects tend to persist into the mid-temporal window.
+
+# Key Findings
+
+1. **Temporal Decay Pattern**
+   - Clear temporal decay across all time windows
+   - 0-10s window: Strongest effects (0.24-0.49)
+   - 10-20s window: Moderate effects (0.12-0.25)
+   - 20-60s window: Minimal effects (~0)
+
+2. **Scenario Differences**
+   - Approximately 2x effect scaling from Conservative to Optimistic
+   - Realistic scenario shows intermediate values
+   - Effect ratios consistent across time windows
+
+3. **Hypothesis Support Tradeoff**
+   - Conservative: 98% support (n=50/51)
+   - Realistic: 93% support (n=50/54)
+   - Optimistic: 88% support (n=50/57)
+
+4. **Sample Size Variability**
+   - Conservative: Stable range (60-90)
+   - Realistic: Moderate variation (60-90)
+   - Optimistic: High variation (60-120)
+
+# Conclusions
+
+1. **Time Window Criticality**: The 0-10s window carries the strongest signal and should be the primary focus of measurement and analysis.
+
+2. **Assumption Impact**: Simulation assumptions substantially affect downstream outcomes (up to 2x effect difference), emphasizing the importance of sensitivity analyses.
+
+3. **Reliability-Sensitivity Tradeoff**: More stringent criteria provide higher hypothesis confirmation but at potential cost to sensitivity. The choice should reflect research priorities.
+
+4. **Methodological Recommendations**:
+   - Conduct sensitivity analyses across effect size assumptions
+   - Prioritize measurement in critical early time windows
+   - Report results stratified by scenario to demonstrate robustness
+   - Consider composite hypotheses weighting early effects more heavily
+
+---
+
+**Report Generated:** `r format(Sys.time(), '%Y-%m-%d %H:%M:%S')`
+
+**Total Simulations Analyzed:** `r nrow(all_data)`
+
+**Files Generated:** 10 high-resolution visualizations (300 dpi PNG format)
