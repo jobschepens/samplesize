@@ -9,7 +9,6 @@ Description: Prior predictive simulation for sequential Bayesian sample size
     event duration data.
 License: MIT
 Encoding: UTF-8
-
 Imports:
     tidyverse (>= 2.0.0),
     knitr (>= 1.45),
@@ -19,7 +18,6 @@ Imports:
     emmeans (>= 1.10.0),
     patchwork (>= 1.2.0),
     scales (>= 1.3.0)
-
 Suggests:
     renv,
     brms,
