@@ -91,16 +91,31 @@ pilot_effect_late_avg <- mean(c(pilot_effect_10_20s, pilot_effect_20_60s))
 # NOTE: The effect sizes below are HYPOTHETICAL design scenarios, not direct
 # replications of the pilot. Key divergences from pilot emmeans contrasts:
 #
-#   Window      Pilot (emmeans)   Conservative   Realistic   Optimistic
-#   0-10s       0.392             0.294          0.392       0.451
-#   10-20s      0.015             0.009          0.015       0.023
-#   20-60s      0.002             0.000          0.002       0.003
+#   Window      Pilot (emmeans)   Minimal   Conservative   Realistic   Optimistic
+#   0-10s       0.392             0.200     0.294          0.392       0.451
+#   10-20s      0.015             0.015     0.009          0.015       0.023
+#   20-60s      0.002             0.070     0.000          0.002       0.003
 #
 # The 0-10s values are close to the pilot. The 10-20s and 20-60s values are
 # near-zero in the pilot and remain so here; they are varied only to probe
 # the sensitivity of the ROPE decision. Scenarios should NOT be read as
 # "what we expect" for later windows — the pilot shows essentially no effect
 # there (beta = 0.015 and 0.002 respectively, both inside the ROPE).
+#
+# WHY ABSENCE DETECTION IS EASY BUT PRESENCE DETECTION DRIVES SAMPLE SIZE:
+# PRESENT requires HDI_low > ROPE_upper (+0.10): the effect must be large
+# enough that even the lower HDI bound clears the ROPE — hard when the true
+# effect is small. ABSENT requires the entire HDI to fit inside ROPE: with
+# a true near-zero effect and sigma_residual = 0.35, the 95% HDI half-width
+# at N = 30 is already ~0.06 (< ROPE half-width 0.10), so absence of the
+# 20-60s window is decided trivially at the first checkpoint in all current
+# scenarios. This asymmetry means expected-N is entirely driven by how
+# quickly the 0-10s PRESENT decision can be made.
+# The Minimal scenario deliberately breaks this by setting the 20-60s true
+# effect to 0.07 — near the ROPE boundary — forcing the absent verdict to
+# wait until the HDI narrows enough to stay below 0.10. Combined with a
+# small 0-10s effect (0.20, just 2× the ROPE half-width), both decisions
+# become difficult and expected-N is pushed toward the hard cap.
 
 scenarios <- list(
 
@@ -134,6 +149,28 @@ scenarios <- list(
     effect_sizes = tibble(
       duration_bin = c("bin_0_10s", "bin_10_20s", "bin_20_60s"),
       effect_d = c(pilot_effect_0_10s * 0.75, pilot_effect_late_avg, 0.00)
+    )
+  ),
+
+  # Scenario 4: SENSITIVITY / MINIMAL DETECTABLE EFFECT
+  # Asks: what if the early effect is only half the pilot, AND the late-window
+  # effect sits near the upper ROPE boundary (0.07)?  This is the worst-case
+  # scenario for the sequential design:
+  #   - PRESENT for 0-10s requires the HDI to clear +0.10 on a true effect of
+  #     only 0.20 — needs N ≈ 60-90 before CI_low consistently exceeds 0.10.
+  #   - ABSENT for 20-60s requires the HDI to stay below +0.10 on a true
+  #     effect of 0.07 — also non-trivial; sampling variation regularly pushes
+  #     the upper HDI bound above 0.10 at small N.
+  #   Both decisions are hard simultaneously, so expected-N is pushed toward
+  #   the hard cap. This scenario serves as a sensitivity analysis: if funded
+  #   for N = 120, does the design still work if the pilot over-estimated the
+  #   early effect by ~50%?
+  minimal = list(
+    name = "Minimal (Sensitivity Analysis — Half Pilot Effect)",
+    description = "Early effect halved vs pilot (0.20); late effect near ROPE boundary (0.07)",
+    effect_sizes = tibble(
+      duration_bin = c("bin_0_10s", "bin_10_20s", "bin_20_60s"),
+      effect_d = c(0.20, pilot_effect_10_20s, 0.07)
     )
   )
 )
