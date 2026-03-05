@@ -19,16 +19,6 @@ format:
     theme:
       light: flatly
       dark: darkly
-  pdf:
-    toc: true
-    toc-depth: 3
-    number-sections: true
-    colorlinks: true
-    documentclass: article
-    fontsize: 11pt
-    geometry: "top=1in,bottom=1in,left=0.75in,right=0.75in"
-    echo: false
-    keep-md: false
 execute:
   echo: true
   warning: false
