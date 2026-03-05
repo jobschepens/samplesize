@@ -632,6 +632,12 @@ run_scenario_simulation <- function(scenario, n_sims, n_samples,
         # Write checkpoint immediately — survives parent OOM kill
         saveRDS(sim_results,
                 file.path(ckpt_dir, sprintf("sim_%04d.rds", sim)))
+        n_done <- length(list.files(ckpt_dir, pattern = "^sim_\\d{4}\\.rds$"))
+        cat(sprintf("  [%s] sim %04d done | %d/%d (%.0f%%) | decided at N=%s\n",
+                    format(Sys.time(), "%H:%M:%S"), sim, n_done, n_sims,
+                    100 * n_done / n_sims,
+                    if (nrow(sim_results) > 0 && tail(sim_results$overall_decision, 1) == "DECIDED")
+                      as.character(tail(sim_results$n_participants, 1)) else "never"))
         return(sim_results)
 
       }, error = function(e) {
