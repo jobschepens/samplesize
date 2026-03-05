@@ -230,7 +230,7 @@ This example shows a **Bayesian sequential design** for determining sample size 
 
 The design is motivated by a pilot experiment that found a large effect of sentence length on event-duration estimates for *short* events (0–10 s; $\hat{\beta} \approx 0.39$ on the log scale, $p < .05$) that was essentially absent for *medium* and *long* events ($\hat{\beta} <0.02$, $p > .90$). The **Hypothesis** is that this should replicate in a more specific design: the effect should be *present* (HDI above ROPE) in the 0–10 s window and *absent* (HDI inside ROPE) in the 20–60 s window.
 
-To assess power and expected sample size, we simulate data under three hypothetical effect-size scenarios — **Conservative**, **Realistic**, and **Optimistic** — based on the pilot estimate for the 0–10 s window. The 10–20 s and 20–60 s windows are simulated with near-zero effects consistent with the pilot, and are varied only to look at ROPE-decision sensitivity. A **sequential stopping rule** checks for decisive HDI/ROPE verdicts starting at N = 30 and after every 15 additional participants (N = 30, 45, 60, 75, 90, 105, 120), halting as soon as both the 0–10 s and 20–60 s windows are resolved — with N = 120 as the hard cap if no prior checkpoint sufficed.
+To assess power and expected sample size, we simulate data under four scenarios — **Conservative**, **Realistic**, **Optimistic**, and **Minimal** — based on the pilot estimate for the 0–10 s window. The first three scenarios vary the 0–10 s effect around the pilot while keeping the 20–60 s effect near zero (easy ABSENT decision). The **Minimal** scenario tests sensitivity by making both decisions hard: a small 0–10 s effect (half the pilot) and a near-ROPE 20–60 s effect (at the boundary where ABSENT becomes difficult). A **sequential stopping rule** checks for decisive HDI/ROPE verdicts starting at N = 30 and after every 15 additional participants (N = 30, 45, 60, 75, 90, 105, 120), halting as soon as both the 0–10 s and 20–60 s windows are resolved — with N = 120 as the hard cap if no prior checkpoint sufficed.
 
 ## Pilot Experiment Results
 
@@ -441,15 +441,15 @@ The Bayesian HDI/ROPE simulation below addresses all five by working with the ac
 
 ## Simulation Parameters & Justification
 
-The three scenarios are *hypothetical* bounding cases built around the pilot 0–10 s contrast ($\hat{\beta} = 0.392$). They are **not** direct extrapolations of the pilot for later windows — the pilot shows essentially no effect there, and the simulation near-zero values (0.009–0.023 for 10–20 s; 0.000–0.003 for 20–60 s) reflect this.
+The first three scenarios are *hypothetical* bounding cases built around the pilot 0–10 s contrast ($\hat{\beta} = 0.392$). They are **not** direct extrapolations of the pilot for later windows — the pilot shows essentially no effect there, and the simulation near-zero values (0.009–0.023 for 10–20 s; 0.000–0.003 for 20–60 s) reflect this. The **Minimal** scenario tests a worst-case sensitivity boundary where both PRESENT and ABSENT decisions are analytically difficult.
 
 ### Effect Size Assumptions (Log Scale)
 
-| Window | Conservative | Realistic | Optimistic | Derivation |
-|:--------------|:--------------|:--------------|:--------------|:--------------|
-| **0–10s** | 0.294 | 0.392 | 0.451 | pilot × 0.75 / pilot / pilot × 1.15 |
-| **10–20s** | 0.009 | 0.015 | 0.023 | avg(medium,long) / medium / medium × 1.5 |
-| **20–60s** | 0.000 | 0.002 | 0.003 | 0 / long / long × 1.5 |
+| Window | Conservative | Realistic | Optimistic | Minimal | Derivation |
+|:--------------|:--------------|:--------------|:--------------|:--------------|:--------------|
+| **0–10s** | 0.294 | 0.392 | 0.451 | 0.200 | pilot × 0.75 / pilot / pilot × 1.15 / pilot × 0.51 (sensitivity) |
+| **10–20s** | 0.009 | 0.015 | 0.023 | 0.015 | avg(medium,long) / medium / medium × 1.5 / medium |
+| **20–60s** | 0.000 | 0.002 | 0.003 | 0.070 | 0 / long / long × 1.5 / near ROPE boundary (hard ABSENT) |
 
 *Pilot emmeans contrasts (β, log scale): instant/short events = 0.392, medium = 0.015, long = 0.002. The 10–20 s and 20–60 s simulation values closely mirror the pilot; the 0–10 s values bracket the pilot estimate.*
 
@@ -459,7 +459,7 @@ The three scenarios are *hypothetical* bounding cases built around the pilot 0�
 
 In a sequential Bayesian design, *power* has two components — one for each decision the stopping rule must reach.
 
-**Detection power (0–10 s window).** This is the probability that, at some checkpoint, the 95% HDI lies entirely *above* the ROPE upper bound and a PRESENT verdict is returned before the hard cap. Given the large effect size ($d \approx 2.11$), detection is not the binding constraint: even at N = 60 the probability of a PRESENT verdict is high across all three scenarios. The conventional t-test power analysis in the previous section addressed *only* this arm — which is why it returned N = 5–13.
+**Detection power (0–10 s window).** This is the probability that, at some checkpoint, the 95% HDI lies entirely *above* the ROPE upper bound and a PRESENT verdict is returned before the hard cap. Given the large effect size ($d \approx 2.11$) in the first three scenarios, detection is not the binding constraint: even at N = 60 the probability of a PRESENT verdict is high. The **Minimal** scenario reduces the 0–10 s effect to 0.20 (half the pilot) to test the lower detection boundary. The conventional t-test power analysis in the previous section addressed *only* this arm — which is why it returned N = 5–13.
 
 **Exclusion power (20–60 s window).** This is the probability that, at some checkpoint, the 95% HDI lies entirely *inside* the ROPE ±0.10 and an ABSENT verdict is returned. This is the binding constraint. The design cannot stop early unless *both* windows are resolved, and the ABSENT verdict cannot be reached until the posterior on the 20–60 s effect is tight enough to exclude even modest effects. As the table below shows, the ROPE boundary is geometrically achievable from N ≈ 30 onward — but the minimum viable N is still 60 due to the random-effects model structure (see below). No conventional power formula captures this — a t-test for H₀ : β = 0 tells you nothing about the sample size needed to *confirm* β ≈ 0 with a ROPE criterion.
 
@@ -499,7 +499,7 @@ The checkpoint schedule follows from this asymmetry. With ROPE = ±0.10, the exc
 
 **Total Simulations Analyzed:** `r n_total`
 
-The dataset consists of `r n_total` independent simulation runs across the three hypothetical effect-size scenarios (Conservative, Realistic, Optimistic). Each run generates a synthetic dataset, fits a Bayesian mixed-effects model, and applies the sequential stopping rule — checking at N = 30, 45, 60, 75, 90, 105, and 120 and halting as soon as both time windows yield a decisive HDI/ROPE verdict. The table below summarises how many participants were enrolled before stopping in each scenario.
+The dataset consists of `r n_total` independent simulation runs across four scenarios: **Conservative**, **Realistic**, and **Optimistic** (varying the 0–10 s effect around the pilot with easy ABSENT decisions), plus **Minimal** (small 0–10 s effect + near-ROPE 20–60 s effect to test sensitivity when both decisions are hard). Each run generates a synthetic dataset, fits a Bayesian mixed-effects model, and applies the sequential stopping rule — checking at N = 30, 45, 60, 75, 90, 105, and 120 and halting as soon as both time windows yield a decisive HDI/ROPE verdict. The table below summarises how many participants were enrolled before stopping in each scenario.
 
 ```{r}
 #| label: sample_summary
@@ -563,7 +563,8 @@ ggplot(all_data, aes(x = mean_0_10s, fill = scenario)) +
   geom_density(alpha = 0.6) +
   scale_fill_manual(values = c("Conservative" = "#1f77b4",
                                "Realistic" = "#ff7f0e",
-                               "Optimistic" = "#2ca02c")) +
+                               "Optimistic" = "#2ca02c",
+                               "Minimal" = "#9467bd")) +
   labs(title = "Effect Size Distribution (0-10s)",
        x = "Mean Effect Size (d)",
        y = "Density",
@@ -592,7 +593,7 @@ plot_data <- all_data %>%
     levels = c("mean_0_10s", "mean_10_20s", "mean_20_60s"),
     labels = c("0-10s", "10-20s", "20-60s")
   ),
-  scenario = factor(scenario, levels = c("Conservative", "Realistic", "Optimistic")))
+  scenario = factor(scenario, levels = c("Conservative", "Realistic", "Optimistic", "Minimal")))
 
 ggplot(plot_data, aes(x = time_window, y = effect_size, fill = scenario)) +
   geom_violin(alpha = 0.7, position = position_dodge(width = 0.9)) +
@@ -600,7 +601,8 @@ ggplot(plot_data, aes(x = time_window, y = effect_size, fill = scenario)) +
                fill = "white", color = "black", linewidth = 0.4) +
   scale_fill_manual(values = c("Conservative" = "#1f77b4",
                                "Realistic" = "#ff7f0e",
-                               "Optimistic" = "#2ca02c")) +
+                               "Optimistic" = "#2ca02c",
+                               "Minimal" = "#9467bd")) +
   labs(title = "Effect Size Distribution by Window",
        x = "Time Window",
        y = "Effect Size (d)",
@@ -667,7 +669,8 @@ ggplot(trajectory_data, aes(x = Time_Window, y = Mean, color = scenario, group =
   geom_errorbar(aes(ymin = CI_Lower, ymax = CI_Upper), width = 0.1) +
   scale_color_manual(values = c("Conservative" = "#1f77b4",
                                 "Realistic" = "#ff7f0e",
-                                "Optimistic" = "#2ca02c")) +
+                                "Optimistic" = "#2ca02c",
+                                "Minimal" = "#9467bd")) +
   labs(title = "Effect Size Trajectory",
        x = "Time Window",
        y = "Mean Effect Size (d)",
@@ -695,7 +698,8 @@ ggplot(h2_summary, aes(x = scenario, y = Support_Rate, fill = scenario)) +
   geom_text(aes(label = sprintf("%.1f%%", Support_Rate)), vjust = -0.5) +
   scale_fill_manual(values = c("Conservative" = "#1f77b4",
                                "Realistic" = "#ff7f0e",
-                               "Optimistic" = "#2ca02c")) +
+                               "Optimistic" = "#2ca02c",
+                               "Minimal" = "#9467bd")) +
   ylim(0, 105) +
   labs(title = "Hypothesis (H2) Support Rates",
        x = "Scenario",
@@ -705,7 +709,7 @@ ggplot(h2_summary, aes(x = scenario, y = Support_Rate, fill = scenario)) +
   theme(legend.position = "none")
 ```
 
-**Interpretation:** All three scenarios show very high H2 support rates because every scenario places the 0–10 s effect well outside the ROPE (smallest: $\beta = 0.294$, ROPE upper bound: $0.10$) while the 20–60 s effect is near zero. The sequential design can therefore reliably distinguish the two windows with N ≤ 90 under all plausible scenarios.
+**Interpretation:** The first three scenarios show very high H2 support rates (100%) because the 0–10 s effect is well outside the ROPE (smallest: $\beta = 0.294$, ROPE upper bound: $0.10$) while the 20–60 s effect is near zero. The **Minimal** scenario shows lower support (61%) and higher expected N (65.2) because both decisions are hard: the 0–10 s effect (0.20) is only 2× the ROPE half-width, and the 20–60 s effect (0.07) sits near the ROPE boundary, making the ABSENT verdict difficult to reach. 39% of Minimal simulations never decided both windows even at N=120, confirming this is a genuine sensitivity boundary.
 
 # Additional Analysis
 
@@ -719,11 +723,12 @@ The sequential design stops data collection when evidence is sufficient. This hi
 
 ggplot(all_data, aes(x = n_participants, fill = scenario)) +
   geom_histogram(alpha = 0.6, bins = 20, color = "black", linewidth = 0.3) +
-  facet_wrap(~factor(scenario, levels = c("Conservative", "Realistic", "Optimistic")),
-             ncol = 3) +
+  facet_wrap(~factor(scenario, levels = c("Conservative", "Realistic", "Optimistic", "Minimal")),
+             ncol = 4) +
   scale_fill_manual(values = c("Conservative" = "#1f77b4",
                                "Realistic" = "#ff7f0e",
-                               "Optimistic" = "#2ca02c")) +
+                               "Optimistic" = "#2ca02c",
+                               "Minimal" = "#9467bd")) +
   labs(title = "Sample Size Distribution",
        x = "Number of Participants",
        y = "Frequency",
@@ -743,11 +748,12 @@ Exploring the relationship between the immediate effect (0-10s) and the sustaine
 ggplot(all_data, aes(x = mean_0_10s, y = mean_10_20s, color = scenario)) +
   geom_point(alpha = 0.6, size = 3) +
   geom_smooth(method = "lm", se = TRUE, alpha = 0.1, linewidth = 1) +
-  facet_wrap(~factor(scenario, levels = c("Conservative", "Realistic", "Optimistic")),
-             ncol = 3) +
+  facet_wrap(~factor(scenario, levels = c("Conservative", "Realistic", "Optimistic", "Minimal")),
+             ncol = 4) +
   scale_color_manual(values = c("Conservative" = "#1f77b4",
                                 "Realistic" = "#ff7f0e",
-                                "Optimistic" = "#2ca02c")) +
+                                "Optimistic" = "#2ca02c",
+                                "Minimal" = "#9467bd")) +
   labs(title = "Correlation: 0-10s vs 10-20s",
        x = "Effect Size (0-10s)",
        y = "Effect Size (10-20s)",
@@ -765,7 +771,7 @@ ggplot(all_data, aes(x = mean_0_10s, y = mean_10_20s, color = scenario)) +
 
 # Conclusion
 
-The Bayesian sequential design is well-powered to detect the hypothesised iconic-duration effect and simultaneously affirm its absence in the late time window. Across all three scenarios the design stops at or near N = 60 in most simulations. The critical precondition is that the 0–10 s effect in the full experiment is at least $\beta \approx 0.29$ (log scale, $\approx 3$ s on a 9 s baseline) — a conservative bound 25% below the pilot estimate. Given the robustness of the pilot findings, this is a reasonable floor.
+The Bayesian sequential design is well-powered to detect the hypothesised iconic-duration effect and simultaneously affirm its absence in the late time window. Across the first three scenarios (Conservative, Realistic, Optimistic) the design stops at or near N = 32 in most simulations. The critical precondition is that the 0–10 s effect in the full experiment is at least $\beta \approx 0.29$ (log scale, $\approx 3$ s on a 9 s baseline) — a conservative bound 25% below the pilot estimate — **and** that the 20–60 s effect is near zero ($\beta \le 0.003$). The **Minimal** scenario reveals the design's sensitivity limits: when the 0–10 s effect drops to 0.20 (half the pilot) and the 20–60 s effect approaches the ROPE boundary (0.07), expected N rises to 65 and 39% of simulations reach the hard cap without deciding both windows. This confirms the design is not suitable for detecting very small early effects or resolving near-boundary late effects simultaneously.
 
 Note that the simulation results reported here were produced with the following model specification that correctly matches the data-generating process: random slopes for sentence length by participant, `prior(lkj(2), class = cor)`, and independent RNG seeds per simulation replicate. Earlier archived results used a simpler random-intercept-only model and should be considered superseded.
 
