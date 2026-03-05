@@ -106,7 +106,7 @@ The simulation is run under two noise conditions (low SD = 0.2, high SD = 0.8) t
 
 # Load the pre-computed LMM simulation results from the sequential testing notebook.
 # Path is relative to this qmd file's location.
-lmm_cache_path <- "../../../../materials/scripts/cache/sim_lmm_results.rds"
+lmm_cache_path <- "../../materials/scripts/cache/sim_lmm_results.rds"
 
 if (file.exists(lmm_cache_path)) {
   lmm_summary_all <- readRDS(lmm_cache_path)
