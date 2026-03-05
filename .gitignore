@@ -1,0 +1,38 @@
+# R
+.Rhistory
+.RData
+.Rproj.user/
+*.Rproj
+
+# Simulation data outputs — tracked separately or too large for git
+data/rds/
+data/archive/
+data/checkpoints/
+data/csv/csv/
+data/rds/rds/
+
+# Quarto/knitr cache and rendered outputs
+reports/qmd/cache/
+reports/qmd/simulation_report_cache/
+reports/qmd/figure/
+reports/qmd/*.html
+reports/qmd/*.md
+reports/html-old/
+
+# Figures (generated from data)
+figures/
+
+# Logs with large files
+logs/*.pdf
+logs/*.rds
+
+# Debian package
+*.deb
+
+# Slurm job outputs
+sim_random_*.out
+sim_random_*.err
+
+# OS
+.DS_Store
+Thumbs.db
