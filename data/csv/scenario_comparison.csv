@@ -1,4 +1,4 @@
-scenario,effect_0_10s,effect_10_20s,effect_20_60s,expected_n,pct_never_decided,h2_support_rate
-optimistic,0.45043199999999994,0.02268,0.0033450000000000003,80.57142857142857,10.256410256410255,100
-realistic,0.39168,0.01512,0.00223,81.42857142857143,12.5,100
-conservative,0.29375999999999997,0.008675,0,73.84615384615384,0,100
+scenario,effect_0_10s,effect_10_20s,effect_20_60s,expected_n,pct_never_decided,h2_support_rate,run_ts,profile,n_sims,n_samples,rope_lower,rope_upper,n_items_per_condition,sigma_residual,sd_participant_intercept,sd_item_intercept,sd_participant_slope,within_corr,mcmc_chains,mcmc_iter,max_workers,r_version,brms_version,stan_version
+optimistic,0.45043199999999994,0.02268,0.0033450000000000003,32.1,0,100,20260305_124008,ramses,100,"30,45,60,75,90,105,120",-0.1,0.1,10,0.35,0.25,0.15,0.1,0.5,2,1000,16,4.5.2,2.23.0,2.32.2
+realistic,0.39168,0.01512,0.00223,32.7,0,100,20260305_124008,ramses,100,"30,45,60,75,90,105,120",-0.1,0.1,10,0.35,0.25,0.15,0.1,0.5,2,1000,16,4.5.2,2.23.0,2.32.2
+conservative,0.29375999999999997,0.008675,0,31.8,0,100,20260305_124008,ramses,100,"30,45,60,75,90,105,120",-0.1,0.1,10,0.35,0.25,0.15,0.1,0.5,2,1000,16,4.5.2,2.23.0,2.32.2

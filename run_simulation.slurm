@@ -73,6 +73,7 @@ if [ -d "$WORKDIR/data/csv" ]; then
 fi
 if [ -d "$WORKDIR/data/rds" ]; then
     cp -v $WORKDIR/data/rds/*.rds $PROJECT_DIR/data/rds/ 2>/dev/null || echo "No RDS files found"
+fi
 # 6. Cleanup
 echo "Cleaning up scratch..."
 cd /
