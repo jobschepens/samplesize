@@ -22,9 +22,8 @@ reports/html-old/
 # Figures (generated from data)
 figures/
 
-# Logs with large files
-logs/*.pdf
-logs/*.rds
+# Private logs — all contents excluded
+logs/
 
 # Debian package
 *.deb
