@@ -7,8 +7,9 @@ on:
       - 'reports/qmd/simulation_report.qmd'
       - 'scripts/utils/load_results.R'
       - 'data/csv/**'
+      - 'DESCRIPTION'
       - '.github/workflows/render-report.yml'
-  workflow_dispatch:  # allow manual trigger
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -21,16 +22,21 @@ concurrency:
 
 jobs:
   render:
-    runs-on: ubuntu-latest
+    # Pin OS for reproducibility — ubuntu-24.04 is a fixed image, not a moving target
+    runs-on: ubuntu-24.04
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
+
+    env:
+      QUARTO_VERSION: '1.8.27'
+      R_VERSION: '4.4.2'
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install system dependencies
+      - name: Install system libraries
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends \
@@ -38,32 +44,35 @@ jobs:
             libfontconfig1-dev libharfbuzz-dev libfribidi-dev \
             libfreetype6-dev libpng-dev libtiff5-dev libjpeg-dev
 
-      - name: Set up R
+      - name: Set up R ${{ env.R_VERSION }}
         uses: r-lib/actions/setup-r@v2
         with:
-          r-version: '4.4'
-          use-public-rspm: true
+          r-version: ${{ env.R_VERSION }}
+          use-public-rspm: true   # Posit Package Manager: pre-built binaries, faster installs
 
+      # pak is used for fast, reproducible installs from DESCRIPTION.
+      # Cache key is the hash of DESCRIPTION so the cache invalidates whenever
+      # a dependency version requirement changes.
       - name: Cache R packages
         uses: actions/cache@v4
         with:
           path: ${{ env.R_LIBS_USER }}
-          key: r-${{ runner.os }}-${{ hashFiles('.github/r-packages.txt') }}
-          restore-keys: r-${{ runner.os }}-
+          key: r-${{ env.R_VERSION }}-${{ runner.os }}-${{ hashFiles('DESCRIPTION') }}
+          restore-keys: |
+            r-${{ env.R_VERSION }}-${{ runner.os }}-
 
-      - name: Install R packages
+      - name: Install R packages from DESCRIPTION
         run: |
-          install.packages(c(
-            "tidyverse", "knitr", "kableExtra",
-            "lme4", "lmerTest", "emmeans",
-            "patchwork", "scales"
-          ), repos = "https://cloud.r-project.org")
+          install.packages("pak", repos = "https://r-lib.github.io/p/pak/stable/")
+          pak::local_install_deps()
         shell: Rscript {0}
 
-      - name: Set up Quarto
+      - name: Set up Quarto ${{ env.QUARTO_VERSION }}
         uses: quarto-dev/quarto-actions/setup@v2
+        with:
+          version: ${{ env.QUARTO_VERSION }}
 
-      - name: Render QMD
+      - name: Render report
         run: |
           quarto render reports/qmd/simulation_report.qmd
           mkdir -p _site

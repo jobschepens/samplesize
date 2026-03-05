@@ -5,20 +5,36 @@ author: "Job Schepens"
 date: "today"
 format:
   html:
-    theme: cosmo
     toc: true
     toc-depth: 3
     code-fold: true
     code-summary: "View Code"
     fig-width: 10
     fig-height: 7
-    embed-resources: true
+    embed-resources: false
+    keep-md: true
     number-sections: true
+    link-external-newwindow: true
+    link-external-icon: true
+    theme:
+      light: flatly
+      dark: darkly
+  pdf:
+    toc: true
+    toc-depth: 3
+    number-sections: true
+    colorlinks: true
+    documentclass: article
+    fontsize: 11pt
+    geometry: "top=1in,bottom=1in,left=0.75in,right=0.75in"
+    echo: false
+    keep-md: false
 execute:
   echo: true
   warning: false
   message: false
 ---
+
 
 ```{r}
 #| label: setup
@@ -757,3 +773,14 @@ Note that the simulation results reported here were produced with the following 
 ------------------------------------------------------------------------
 
 *Report generated on `r format(Sys.time(), '%Y-%m-%d %H:%M:%S')`*
+
+## Session Info {.appendix}
+
+R and package versions used to produce this report:
+
+```{r}
+#| label: session-info
+#| echo: false
+#| collapse: true
+sessionInfo()
+```
