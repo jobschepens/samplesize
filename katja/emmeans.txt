@@ -1,0 +1,43 @@
+$emmeans
+event_duration = instant:
+ sentence_length emmean    SE   df lower.CL upper.CL
+ short             1.28 0.626 32.9  0.00563     2.55
+ long              1.67 0.626 32.9  0.39864     2.95
+
+event_duration = short:
+ sentence_length emmean    SE   df lower.CL upper.CL
+ short             2.64 0.626 32.9  1.36312     3.91
+ long              3.03 0.626 32.9  1.75480     4.30
+
+event_duration = medium:
+ sentence_length emmean    SE   df lower.CL upper.CL
+ short             6.21 0.626 32.9  4.93220     7.48
+ long              6.22 0.626 32.9  4.94732     7.50
+
+event_duration = long:
+ sentence_length emmean    SE   df lower.CL upper.CL
+ short            11.07 0.626 32.9  9.79766    12.35
+ long             11.07 0.626 32.9  9.79989    12.35
+
+Degrees-of-freedom method: kenward-roger 
+Confidence level used: 0.95 
+
+$contrasts
+event_duration = instant:
+ contrast     estimate    SE   df t.ratio p.value
+ short - long -0.39302 0.171 1515  -2.305  0.0213
+
+event_duration = short:
+ contrast     estimate    SE   df t.ratio p.value
+ short - long -0.39168 0.171 1515  -2.297  0.0218
+
+event_duration = medium:
+ contrast     estimate    SE   df t.ratio p.value
+ short - long -0.01512 0.171 1515  -0.089  0.9294
+
+event_duration = long:
+ contrast     estimate    SE   df t.ratio p.value
+ short - long -0.00223 0.171 1515  -0.013  0.9896
+
+Degrees-of-freedom method: kenward-roger 
+

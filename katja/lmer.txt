@@ -1,0 +1,47 @@
+Linear mixed model fit by REML. t-tests use Satterthwaite's method ['lmerModLmerTest']
+Formula: log_time ~ 1 + sentence_length * event_duration + (1 | Participant.Private.ID) +      (1 | id)
+   Data: data.edse
+
+REML criterion at convergence: 6496.2
+
+Scaled residuals: 
+    Min      1Q  Median      3Q     Max 
+-7.3264 -0.4702 -0.0140  0.4814  3.3539 
+
+Random effects:
+ Groups                 Name        Variance Std.Dev.
+ Participant.Private.ID (Intercept) 1.183    1.088   
+ id                     (Intercept) 2.831    1.683   
+ Residual                           2.904    1.704   
+Number of obs: 1600, groups:  Participant.Private.ID, 50; id, 32
+
+Fixed effects:
+                                           Estimate Std. Error         df t value Pr(>|t|)    
+(Intercept)                               1.280e+00  6.261e-01  3.291e+01   2.044   0.0491 *  
+sentence_lengthlong                       3.930e-01  1.705e-01  1.515e+03   2.305   0.0213 *  
+event_durationshort                       1.357e+00  8.584e-01  2.914e+01   1.581   0.1246    
+event_durationmedium                      4.927e+00  8.584e-01  2.914e+01   5.739 3.21e-06 ***
+event_durationlong                        9.792e+00  8.584e-01  2.914e+01  11.408 2.88e-12 ***
+sentence_lengthlong:event_durationshort  -1.338e-03  2.412e-01  1.515e+03  -0.006   0.9956    
+sentence_lengthlong:event_durationmedium -3.779e-01  2.412e-01  1.515e+03  -1.567   0.1174    
+sentence_lengthlong:event_durationlong   -3.908e-01  2.412e-01  1.515e+03  -1.620   0.1054    
+---
+Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+
+Correlation of Fixed Effects:
+                         (Intr) sntnc_ evnt_drtns evnt_drtnm evnt_drtnl sntnc_lngthlng:vnt_drtns
+sntnc_lngth              -0.136                                                                 
+evnt_drtnsh              -0.685  0.099                                                          
+evnt_drtnmd              -0.685  0.099  0.500                                                   
+evnt_drtnln              -0.685  0.099  0.500      0.500                                        
+sntnc_lngthlng:vnt_drtns  0.096 -0.707 -0.140     -0.070     -0.070                             
+sntnc_lngthlng:vnt_drtnm  0.096 -0.707 -0.070     -0.140     -0.070      0.500                  
+sntnc_lngthlng:vnt_drtnl  0.096 -0.707 -0.070     -0.070     -0.140      0.500                  
+                         sntnc_lngthlng:vnt_drtnm
+sntnc_lngth                                      
+evnt_drtnsh                                      
+evnt_drtnmd                                      
+evnt_drtnln                                      
+sntnc_lngthlng:vnt_drtns                         
+sntnc_lngthlng:vnt_drtnm                         
+sntnc_lngthlng:vnt_drtnl  0.500                  
