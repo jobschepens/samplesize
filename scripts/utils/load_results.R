@@ -14,7 +14,8 @@ load_simulation_results <- function(data_dir = "data/csv") {
   file_map <- c(
     "simulation_results_optimistic.csv" = "Optimistic",
     "simulation_results_realistic.csv" = "Realistic",
-    "simulation_results_conservative.csv" = "Conservative"
+    "simulation_results_conservative.csv" = "Conservative",
+    "simulation_results_minimal.csv" = "Minimal"
   )
   
   all_data <- tibble()
@@ -35,10 +36,10 @@ load_simulation_results <- function(data_dir = "data/csv") {
     }
   }
   
-  # Reorder scenario factor for plotting (Conservative -> Realistic -> Optimistic)
+  # Reorder scenario factor for plotting (Conservative -> Realistic -> Optimistic -> Minimal)
   if (nrow(all_data) > 0) {
     all_data <- all_data %>%
-      mutate(scenario = factor(scenario, levels = c("Conservative", "Realistic", "Optimistic")))
+      mutate(scenario = factor(scenario, levels = c("Conservative", "Realistic", "Optimistic", "Minimal")))
   }
   
   return(all_data)
